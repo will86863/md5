@@ -1,0 +1,38 @@
+# 文件路径：.github/workflows/build-exe.yml
+# 功能：在 Windows 环境下自动使用 PyInstaller 打包 Tkinter 程序为 exe
+# 产物：Actions 页面可直接下载 exe
+
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: 拉取代码
+      uses: actions/checkout@v4
+
+    - name: 安装 Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: 安装依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller send2trash
+
+    - name: 使用 PyInstaller 打包 exe
+      run: |
+        pyinstaller -F -w duplicate_file_cleaner.py
+
+    - name: 上传 exe 构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: DuplicateFileCleaner-Windows
+        path: dist/*.exe
