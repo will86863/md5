@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
 Duplicate File Finder and Remover (Tkinter GUI)
-功能：
-- 扫描文件夹（递归）
-- 按 MD5 查找重复文件
-- 手动选择每组要保留的文件
-- 删除其余重复文件（可选回收站）
+改进版：
+- 双击文件选择“保留文件”
+- 未选择的重复组自动随机保留一个
 """
 
 import os
@@ -13,6 +11,7 @@ import hashlib
 import threading
 import queue
 import time
+import random
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
@@ -32,9 +31,9 @@ def md5_of_file(path):
         with open(path, "rb") as f:
             for chunk in iter(lambda: f.read(CHUNK_SIZE), b""):
                 h.update(chunk)
-    except Exception as e:
-        return None, str(e)
-    return h.hexdigest(), None
+    except Exception:
+        return None
+    return h.hexdigest()
 
 
 class ScannerThread(threading.Thread):
@@ -63,10 +62,9 @@ class ScannerThread(threading.Thread):
 
         md5_map = {}
         done = 0
-
         for group in candidates:
             for p in group:
-                md5, err = md5_of_file(p)
+                md5 = md5_of_file(p)
                 done += 1
                 if md5:
                     md5_map.setdefault(md5, []).append(p)
@@ -79,17 +77,16 @@ class ScannerThread(threading.Thread):
 class App:
     def __init__(self, root):
         self.root = root
-        root.title("重复文件检测并删除器（手动选择保留）")
+        root.title("重复文件检测并删除器（双击选择保留）")
         root.geometry("1000x600")
 
-        # ✅ 正确的 Tk 变量写法（已修复）
         self.folder_var = tk.StringVar()
         self.status_var = tk.StringVar(value="就绪")
         self.use_trash_var = tk.BooleanVar(value=False)
 
         self.duplicates = {}
         self.group_keys = []
-        self.keep_map = {}  # md5 -> 保留文件
+        self.keep_map = {}  # md5 -> keep path
 
         self.queue = queue.Queue()
 
@@ -128,14 +125,11 @@ class App:
         right = ttk.Frame(mid)
         right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
 
+        ttk.Label(right, text="双击文件 → 设为保留").pack(anchor=tk.W)
+
         self.file_listbox = tk.Listbox(right, selectmode=tk.SINGLE)
         self.file_listbox.pack(fill=tk.BOTH, expand=True)
-
-        ttk.Button(
-            right,
-            text="设为本组保留文件",
-            command=self.set_keep_file
-        ).pack(pady=6)
+        self.file_listbox.bind("<Double-Button-1>", self.on_file_double_click)
 
         bottom = ttk.Frame(self.root, padding=8)
         bottom.pack(fill=tk.X)
@@ -152,7 +146,7 @@ class App:
     def start_scan(self):
         folder = self.folder_var.get()
         if not os.path.isdir(folder):
-            messagebox.showerror("错误", "请选择有效的文件夹路径")
+            messagebox.showerror("错误", "请选择有效的文件夹")
             return
 
         self.duplicates.clear()
@@ -197,23 +191,22 @@ class App:
             if self.keep_map.get(md5) == p:
                 self.file_listbox.selection_set(i)
 
-    def set_keep_file(self):
-        gsel = self.tv.selection()
-        fsel = self.file_listbox.curselection()
-        if not gsel or not fsel:
-            messagebox.showwarning("提示", "请选择一个组和一个文件")
+    def on_file_double_click(self, event):
+        sel_group = self.tv.selection()
+        sel_file = self.file_listbox.curselection()
+        if not sel_group or not sel_file:
             return
 
-        md5 = self.group_keys[int(gsel[0])]
-        path = self.file_listbox.get(fsel[0])
-        self.keep_map[md5] = path
-        messagebox.showinfo("成功", "已设为保留文件")
+        md5 = self.group_keys[int(sel_group[0])]
+        keep_path = self.file_listbox.get(sel_file[0])
+        self.keep_map[md5] = keep_path
+        self.status_var.set("已选择保留文件")
 
     def confirm_and_delete(self):
-        for md5 in self.duplicates:
+        # 自动补全未选择的组（随机）
+        for md5, paths in self.duplicates.items():
             if md5 not in self.keep_map:
-                messagebox.showerror("错误", "存在未选择保留文件的重复组")
-                return
+                self.keep_map[md5] = random.choice(paths)
 
         deleted = 0
         for md5, paths in self.duplicates.items():
