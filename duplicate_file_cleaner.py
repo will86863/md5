@@ -134,8 +134,7 @@ class App:
             self.folder_var.set(d)
 
     def log(self, msg):
-        self.log_text.insert(tk.END, msg + "
-")
+        self.log_text.insert(tk.END, msg + "\n")
         self.log_text.see(tk.END)
 
     def start_scan(self):
